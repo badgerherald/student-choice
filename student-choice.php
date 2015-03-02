@@ -13,7 +13,6 @@ License:        GNLv2 (or higher)
 
 /**
  * Creates needed tables on plugin activation
- * TODO: figure out how to make foriegn keys
  */
 function sc_activation() {
     global $wpdb;
@@ -59,9 +58,11 @@ function sc_activation() {
             id int(11) NOT NULL AUTO_INCREMENT,
             participant_id int(11) NOT NULL,
             option_id int(11) NOT NULL,
+            question_id int(11) NOT NULL,
             PRIMARY KEY (id),
             KEY participant_id (participant_id),
-            KEY option_id (option_id)
+            KEY option_id (option_id),
+            KEY question_id (question_id)
     ) $charset_collate;";
 
     
@@ -71,6 +72,38 @@ function sc_activation() {
     dbDelta($sql3);
     dbDelta($sql4);
     dbDelta($sql5);
+
+    $sql = "ALTER TABLE $table_options
+            ADD CONSTRAINT {$table_options}_ibfk_1
+            FOREIGN KEY (question_id)
+            REFERENCES $table_questions (id);";
+    $wpdb->query($sql);
+
+    $sql = "ALTER TABLE $table_participants
+            ADD CONSTRAINT {$table_participants}_ibfk_1
+            FOREIGN KEY (poll_name)
+            REFERENCES $table_poll (poll_name);";
+    $wpdb->query($sql);
+
+    $sql = "ALTER TABLE $table_questions
+            ADD CONSTRAINT {$table_questions}_ibfk_1
+            FOREIGN KEY (poll_name)
+            REFERENCES $table_poll (poll_name);";
+    $wpdb->query($sql);
+
+    $sql = "ALTER TABLE $table_votes
+            ADD CONSTRAINT {$table_votes}_ibfk_1
+            FOREIGN KEY (participant_id)
+            REFERENCES $table_participants (id),
+            ADD CONSTRAINT {$table_votes}_ibfk_2
+            FOREIGN KEY (option_id)
+            REFERENCES $table_options (id),
+            ADD CONSTRAINT {$table_votes}_ibfk_3
+            FOREIGN KEY (question_id)
+            REFERENCES $table_questions (id);";
+    $wpdb->query($sql);
+
+
 }
 register_activation_hook( __FILE__, 'sc_activation');
 
@@ -125,9 +158,9 @@ class StudentChoicePoll
                         if (isset($_POST['question_'.$question->id]))
                         {
                             $opt_id = $_POST['question_'.$question->id];
-                            if (!$this->option_voted_on($participant_id, $opt_id))
+                            if (!$this->option_voted_on($participant_id, $question->id))
                             {
-                                $this->add_vote($participant_id, $opt_id);
+                                $this->add_vote($participant_id, $question->id, $opt_id);
                             }
                         }
                     }
@@ -144,6 +177,10 @@ class StudentChoicePoll
             'name' => 'default-poll'
         ), $atts);
         $this->poll_name = $att['name'];
+        if (!$this->has_poll($this->poll_name))
+        {
+            $this->create_poll($this->poll_name);
+        }
         $this->poll_questions = $this->get_questions($this->poll_name);
         if ($this->display_form)
         {
@@ -184,50 +221,37 @@ class StudentChoicePoll
         $question_slug = str_replace(" ", "-", $question_slug);
         $att['options'] = explode(',', $att['options']);
         $q = $this->has_question($question_slug);
+        // TODO: should really factor this out to a function
         if (!$q)
         {
-            $inserted = $wpdb->insert(
-                $wpdb->prefix.'sc_questions',
-                array(
-                    'question_name' => $question_slug,
-                    'poll_name' => $this->poll_name
-                ),
-                array(
-                    '%s',
-                    '%s'
-                )
-            );
-            if ($inserted)
+            $this->create_question($question_slug, $att['options']);
+
+            $this->poll_questions = $this->get_questions($this->poll_name);
+            $q = $this->has_question($question_slug);
+        }
+        else
+        {
+            foreach ($att['options'] as $key => $option)
             {
-                $qid = $wpdb->insert_id;
-                foreach ($att['options'] as $key => $option)
+                $opt_slug = strtolower($option);
+                $opt_slug = str_replace(" ", "-", $opt_slug);
+                if (!$this->question_has_option($q, $opt_slug))
                 {
-                    $inserted = $wpdb->insert(
-                        $wpdb->prefix.'sc_options',
-                        array(
-                            'question_id' => $qid,
-                            'option_text' => $option
-                        ),
-                        array(
-                            '%d',
-                            '%s'
-                        )
-                    );
+                    $this->create_option($q->id, $option);
                 }
             }
 
             $this->poll_questions = $this->get_questions($this->poll_name);
+            $q = $this->has_question($question_slug);
         }
-        else
-        {
-            //TODO: check for new options if the shortcode had been edited
-            //TODO: also would be nice to be able to remove options no longer
-            //      present
-        }
-        $q = $this->has_question($question_slug);
         $ret = '<div class="sc_poll_question">';
         foreach ($q->options as $key => $option)
         {
+            if ($this->bad_option($option, $att['options']))
+            {
+                continue;
+            }
+
             $checked = '';
             if (isset($_POST['question_'.$q->id])) {
                 if ((int)$option->id === (int) $_POST['question_'.$q->id])
@@ -240,6 +264,35 @@ class StudentChoicePoll
         }
         $ret .= '</div>';
         return $ret;
+    }
+
+    function has_poll($poll_name)
+    {
+        global $wpdb;
+        $sql = $wpdb->prepare("SELECT * FROM {$wpdb->prefix}sc_poll
+                                WHERE poll_name = %s",
+                                $poll_name);
+        $result = $wpdb->get_results($sql);
+
+        if (empty($result))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    function create_poll($poll_name)
+    {
+        global $wpdb;
+        $wpdb->insert($wpdb->prefix.'sc_poll',
+            array(
+                'poll_name' => $poll_name
+            ),
+            array(
+                '%s'
+            )
+        );
     }
 
     function get_questions($poll_name)
@@ -264,6 +317,88 @@ class StudentChoicePoll
         }
 
         return $result;
+    }
+
+    /**
+     * Adds a question and its options to the database
+     * @param  string $question_slug question slug
+     * @param  array  $options       array of options
+     */
+    function create_question($question_slug, $options)
+    {
+        global $wpdb;
+        $inserted = $wpdb->insert(
+            $wpdb->prefix.'sc_questions',
+            array(
+                'question_name' => $question_slug,
+                'poll_name' => $this->poll_name
+            ),
+            array(
+                '%s',
+                '%s'
+            )
+        );
+        if ($inserted)
+        {
+            $qid = $wpdb->insert_id;
+            foreach ($options as $key => $option)
+            {
+                $this->create_option($qid, $option);
+            }
+        }
+    }
+
+    /**
+     * Checks to see if the option is present in the givin list of options
+     * @param  object $option      object object from DB
+     * @param  array  $option_atts string array from options attribute of shortcode
+     * @return bool                false if good option, true otherwise
+     */
+    function bad_option($option, $option_atts)
+    {
+        $opt_slug = strtolower($option->option_text);
+        $opt_slug = str_replace(" ", "-", $opt_slug);
+
+        foreach ($option_atts as $att)
+        {
+            $att_slug = strtolower($att);
+            $att_slug = str_replace(" ", "-", $att_slug);
+            if (strcmp($opt_slug, $att_slug) === 0)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function create_option($question_id, $option_text)
+    {
+        global $wpdb;
+        $inserted = $wpdb->insert(
+            $wpdb->prefix.'sc_options',
+            array(
+                'question_id' => $question_id,
+                'option_text' => $option_text
+            ),
+            array(
+                '%d',
+                '%s'
+            )
+        );
+    }
+
+    function question_has_option($question, $opt_slug)
+    {
+        foreach ($question->options as $option)
+        {
+            $curr_slug = strtolower($option->option_text);
+            $curr_slug = str_replace(" ", "-", $curr_slug);
+            if (strcmp($curr_slug, $opt_slug) === 0)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     function valid_wisc($email) {
@@ -321,13 +456,13 @@ class StudentChoicePoll
 
     //TODO bit confused why we check if a participant voted on an option and not question
     //Should really check question ID so participants cant double vote
-    function option_voted_on($participant_id, $option_id) {
+    function option_voted_on($participant_id, $question_id) {
         global $wpdb;
-        $voted_stmt = $wpdb->prepare("SELECT * FROM {$wpdb->prefix}sc_votes
+        $sql = $wpdb->prepare("SELECT * FROM {$wpdb->prefix}sc_votes
             WHERE participant_id = %d
-            AND option_id = %d",
+            AND question_id = %d",
             $participant_id,
-            $option_id
+            $question_id
         );
         $result = $wpdb->get_results($sql);
         if (empty($result)) 
@@ -341,7 +476,7 @@ class StudentChoicePoll
     }
 
     //TODO: Add question id
-    function add_vote($participant_id, $option_id) {
+    function add_vote($participant_id, $question_id, $option_id) {
         global $wpdb;
         if ($option_id === null) {
             return;
@@ -349,9 +484,11 @@ class StudentChoicePoll
         $add_stmt = $wpdb->insert($wpdb->prefix.'sc_votes',
             array(
                 'participant_id' => $participant_id,
-                'option_id' => $option_id
+                'option_id' => $option_id,
+                'question_id' => $question_id
             ),
             array(
+                '%d',
                 '%d',
                 '%d'
             )
@@ -360,80 +497,6 @@ class StudentChoicePoll
 }
 
 $poll = new StudentChoicePoll();
-/*
-function open_db($dbstr, $username, $password, $options) {
-    $dbh = new PDO($dbstr, $username, $password);
-    $dbh->setAttribute( PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION );
-    return $dbh;
-}
-
-function get_questions($dbh, $quiz_name) {
-    $quiz_stmt = $dbh->prepare('SELECT * FROM Questions WHERE quiz = ?');
-    $quiz_stmt->execute(array($quiz_name));
-    return $quiz_stmt->fetchAll();
-}
-
-function get_options($dbh, $question_id) {
-    $options_stmt = $dbh->prepare("SELECT * FROM Options WHERE question_id = ?");
-    $options_stmt->execute(array($question_id));
-    return $options_stmt->fetchAll();
-}
-
-function find_participant($dbh, $email, $quiz_name) {
-    $participant_stmt = $dbh->prepare("SELECT * FROM Participants WHERE email = ? AND quiz = ?");
-    $participant_stmt->execute(array($email, $quiz_name));
-    $results = $participant_stmt->fetchAll();
-    if (count($results) < 1) {
-        return NULL;
-    }
-    return $results[0]["id"];
-}
-
-function create_participant($dbh, $email, $quiz_name) {
-    $index_stmt = $dbh->prepare("SELECT MAX(id) FROM Participants");
-    $index_stmt->execute(array());
-    $new_id = $index_stmt->fetchAll();
-    $new_index = $new_index[0][0] + 1;
-    $add_stmt = $dbh->prepare("INSERT INTO Participants (id, email, quiz) VALUES (?, ?, ?)");
-    $add_stmt->execute(array($new_id, $email, $quiz_name));
-    // Ugly hack
-    return find_participant($dbh, $email, $quiz_name);
-}
-
-function option_voted_on($dbh, $participant_id, $option_id) {
-    $voted_stmt = $dbh->prepare("SELECT * FROM Votes WHERE participant_id = ? AND option_id = ?");
-    $voted_stmt->execute(array($participant_id, $option_id));
-    if (count($voted_stmt->fetchAll()) > 0) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-function add_vote($dbh, $participant_id, $option_id) {
-    if ($option_id === null) {
-        return;
-    }
-    $index_stmt = $dbh->prepare("SELECT MAX(id) FROM Votes");
-    $index_stmt->execute(array());
-    $new_id = $index_stmt->fetchAll();
-    $new_index = $new_index[0][0] + 1;
-    $add_stmt = $dbh->prepare("INSERT INTO Votes (id, participant_id, option_id) VALUES (?, ?, ?)");
-    $add_stmt->execute(array($new_id, $participant_id, $option_id));
-}
-
-function valid_wisc($email) {
-    $email = strtolower($email);
-    if (filter_var($email, FILTER_VALIDATE_EMAIL) === FALSE) {
-        return FALSE;
-    } else {
-        if (strpos($email, "wisc.edu") === FALSE) {
-            return FALSE;
-        }
-    }
-    return TRUE;
-}
-*/
 /*
 ?>
 
