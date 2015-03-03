@@ -15,20 +15,33 @@ label.radio-label input[type="radio"] {
     height: 100%;
     left: 10px;
     top: 0;
+    z-index: -20;
     display: inline-block;
 }
 
 label.radio-label input[type="radio"] + span{
     display: inline-block;
-    padding: 10px 30px;
+    padding: 10px 20px;
     width: 100%;
+    font-size: 18px;
+    font-weight: 700;
+    font-family: "PT Sans Narrow", Helvetica, Arial, Sans-Serif;
 }
 
-label.radio-label:hover input[type="radio"] + span, label.radio-label input[type="radio"]:checked + span{
+label.radio-label:hover input[type="radio"] + span{
     cursor: pointer;
-    background: #2075d0;
-    color: #fff;
 }
+
+label.radio-label:hover input[type="radio"] + span:before, label.radio-label input[type="radio"]:checked + span:before{
+    content: '';
+    background: #2075d0;
+    height: 100%;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 6px;
+}
+
 label.sc-email-input-label {
     font-size: 18px;
     font-weight: 700;
@@ -60,7 +73,8 @@ input.sc-submit:hover {
         margin-left: 80px;
     }
     label.radio-label {
-        width: auto;
+        width: 100%;
+        max-width: calc(100% - 380px);
     }
     label.radio-label input[type="radio"] + span{
         width: auto;
@@ -70,6 +84,7 @@ input.sc-submit:hover {
 {
     label.radio-label {
         width: 100%;
+        max-width: 100%;
     }
     label.radio-label input[type="radio"] + span{
         width: 100%;
