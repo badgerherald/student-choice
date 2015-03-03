@@ -120,6 +120,7 @@ class StudentChoicePoll
         add_action('init', array($this, 'init'));
         add_shortcode('poll', array($this, 'poll_shortcode'));
         add_shortcode('poll-options', array($this, 'poll_options_shortcode'));
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_poll_scripts'));
     }
 
     public function init()
@@ -169,6 +170,11 @@ class StudentChoicePoll
         }
     }
 
+    public function enqueue_poll_scripts()
+    {
+        wp_enqueue_style("sc_poll_style", plugins_url().'/student-choice/sc_style.css');
+    }
+
     function poll_shortcode($atts, $content = '')
     {
         global $wpdb;
@@ -185,19 +191,21 @@ class StudentChoicePoll
         if ($this->display_form)
         {
             //Form has not been submitted or had errors, lets display the form.
-            $ret = '<form action="" method="POST">';
+            $ret = '<form action="" method="POST" class="sc_poll">';
             $ret .= '<input type="text" name="poll_name" value="'.$this->poll_name.'" hidden>';
             $ret .= do_shortcode($content);
+            $ret .= '<div class="sc_poll_question">';
             $ret .= '<div class="email">';
-            $ret .= '<label for="sc_poll_email" class="email-input-label">Please insert your valid @wisc.edu email.</label>';
+            $ret .= '<label for="sc_poll_email" class="sc-email-input-label">Please insert your valid @wisc.edu email.</label><br />';
             if (!$this->valid_form)
             {
                 $ret .= '<p class="email-err">Please enter a valid @wisc.edu email.</p>';
             }
-            $ret .= '<input name="sc_poll_email" id="sc_poll_email" class="email-input" type="text" placeholder="Email">';
+            $ret .= '<input name="sc_poll_email" id="sc_poll_email" class="sc-email-input" type="text" placeholder="Email">';
             $ret .= '</div>';
             $ret .= wp_nonce_field('sc_poll_form', 'sc_poll_form_nonce');
-            $ret .= '<input type="submit" value="Submit">';
+            $ret .= '<input type="submit" value="Submit" class="sc-submit">';
+            $ret .= '</div>';
             $ret .= '</form>';
             return $ret;
         }
@@ -259,8 +267,10 @@ class StudentChoicePoll
                     $checked = ' checked';
                 }
             }
+            $ret .= '<label class="radio-label" for="sc_poll_'.$q->id.'_'.$option->id.'">';
             $ret .= '<input type="radio" id="sc_poll_'.$q->id.'_'.$option->id.'" name="question_'.$q->id.'" value="'.$option->id.'"'.$checked.'>';
-            $ret .= '<label for="sc_poll_'.$q->id.'_'.$option->id.'">'.$option->option_text.'</label><br />';
+            $ret .= '<span>'.$option->option_text.'</span>';
+            $ret .= '</label><br />';
         }
         $ret .= '</div>';
         return $ret;

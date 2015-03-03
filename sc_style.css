@@ -1,0 +1,77 @@
+label.radio-label {
+    padding: 0;
+    display: inline-block;
+    position: relative;
+    background: #fff;
+    width: 100%;
+    -webkit-box-shadow: 0 6px 3px -6px #777;
+       -moz-box-shadow: 0 6px 3px -6px #777;
+            box-shadow: 0 6px 3px -6px #777;
+    margin-bottom: 6px;
+}
+
+label.radio-label input[type="radio"] {
+    position: absolute;
+    height: 100%;
+    left: 10px;
+    top: 0;
+    display: inline-block;
+}
+
+label.radio-label input[type="radio"] + span{
+    display: inline-block;
+    padding: 10px 30px;
+    width: 100%;
+}
+
+label.radio-label:hover input[type="radio"] + span, label.radio-label input[type="radio"]:checked + span{
+    cursor: pointer;
+    background: #2075d0;
+    color: #fff;
+}
+label.sc-email-input-label {
+    font-size: 18px;
+    font-weight: 700;
+    font-family: "PT Sans Narrow", Helvetica, Arial, Sans-Serif;
+}
+input.sc-email-input {
+    margin: 6px 0 12px;
+    padding-left: 10px;
+}
+
+input.sc-submit {
+    background: #2075d0;
+    color: #fff;
+    font-family: "PT Sans Narrow", Helvetica, Arial, Sans-Serif;
+    text-transform: uppercase;
+    border: none;
+    padding: 10px;
+    -webkit-box-shadow: 0 6px 3px -6px #777;
+       -moz-box-shadow: 0 6px 3px -6px #777;
+            box-shadow: 0 6px 3px -6px #777;
+}
+input.sc-submit:hover {
+    background: #3a97f7;
+}
+
+@media (min-width: 768px)
+{
+    .sc_poll_question{
+        margin-left: 80px;
+    }
+    label.radio-label {
+        width: auto;
+    }
+    label.radio-label input[type="radio"] + span{
+        width: auto;
+    }
+}
+@media (min-width: 1060px)
+{
+    label.radio-label {
+        width: 100%;
+    }
+    label.radio-label input[type="radio"] + span{
+        width: 100%;
+    }
+}
