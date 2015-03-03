@@ -212,7 +212,7 @@ class StudentChoicePoll
         else
         {
             //Form has been submitted and we have returned here from form action.
-            $ret = '<div>Thanks for voting</div>';
+            $ret = '<div>Thanks for voting.</h2>';
             return $ret;
         }
     }
